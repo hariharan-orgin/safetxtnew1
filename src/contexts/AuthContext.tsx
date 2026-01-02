@@ -20,6 +20,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>;
   signup: (userData: SignupData) => Promise<void>;
   logout: () => Promise<void>;
+  loginAsDemo: (role: UserRole) => Promise<void>;
 }
 
 interface SignupData {
@@ -103,7 +104,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setUser(buildUserFromFirebase(firebaseUser, null));
 
       // Load role separately
-      const role = await fetchUserRole(firebaseUser.uid) ?? 'field_team';
+      const role = (await fetchUserRole(firebaseUser.uid)) ?? 'field_team';
       setUser(buildUserFromFirebase(firebaseUser, role));
       setIsLoading(false);
     });
@@ -145,6 +146,50 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
+  const loginAsDemo = async (role: UserRole): Promise<void> => {
+    setIsLoading(true);
+    try {
+      const creds: Record<UserRole, { email: string; password: string }> = {
+        admin: { email: 'demo-admin@safetext.app', password: 'DemoAdmin123!' },
+        executive: { email: 'demo-executive@safetext.app', password: 'DemoExec123!' },
+        control_room: { email: 'demo-control@safetext.app', password: 'DemoControl123!' },
+        field_team: { email: 'demo-field@safetext.app', password: 'DemoField123!' },
+      };
+
+      const { email, password } = creds[role];
+      let firebaseUser: FirebaseUser | null = null;
+
+      try {
+        const cred = await signInWithEmailAndPassword(firebaseAuth, email, password);
+        firebaseUser = cred.user;
+      } catch (error: any) {
+        if (error?.code === 'auth/user-not-found') {
+          const cred = await createUserWithEmailAndPassword(firebaseAuth, email, password);
+          firebaseUser = cred.user;
+        } else {
+          throw error;
+        }
+      }
+
+      if (!firebaseUser) return;
+
+      await setDoc(
+        doc(firebaseDb, 'userRoles', firebaseUser.uid),
+        {
+          role,
+          email,
+          username: `demo-${role}`,
+        },
+        { merge: true }
+      );
+
+      const appUser = buildUserFromFirebase(firebaseUser, role);
+      setUser(appUser);
+      navigate(getRoleDashboard(role));
+    } finally {
+      setIsLoading(false);
+    }
+  };
   const logout = async () => {
     setIsLoading(true);
     try {
@@ -165,6 +210,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         login,
         signup,
         logout,
+        loginAsDemo,
       }}
     >
       {children}
