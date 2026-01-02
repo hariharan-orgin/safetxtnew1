@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
-import { useAuth, UserRole } from '@/contexts/AuthContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Eye, EyeOff, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -11,22 +10,22 @@ const LoginForm: React.FC = () => {
   const { login, isLoading } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState<UserRole | ''>('');
   const [showPassword, setShowPassword] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!email || !password || !role) {
+
+    if (!email || !password) {
       toast.error('Please fill in all fields');
       return;
     }
 
     try {
-      await login(email, password, role as UserRole);
+      await login(email, password);
       toast.success('Welcome back!');
-    } catch (error) {
-      toast.error('Login failed. Please try again.');
+    } catch (error: any) {
+      const message = error?.message || 'Login failed. Please check your credentials.';
+      toast.error(message);
     }
   };
 
@@ -48,30 +47,13 @@ const LoginForm: React.FC = () => {
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="role" className="text-[#0F172A] font-medium">
-          Role
-        </Label>
-        <Select value={role} onValueChange={(value) => setRole(value as UserRole)}>
-          <SelectTrigger className="h-11 border-gray-200 bg-white text-gray-900 focus:border-accent focus:ring-2 focus:ring-accent/20">
-            <SelectValue placeholder="Select your role" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="admin">Admin</SelectItem>
-            <SelectItem value="executive">Executive</SelectItem>
-            <SelectItem value="control_room">Control Room</SelectItem>
-            <SelectItem value="field_team">Field Team</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div className="space-y-2">
         <Label htmlFor="password" className="text-[#0F172A] font-medium">
           Password
         </Label>
         <div className="relative">
           <Input
             id="password"
-            type={showPassword ? "text" : "password"}
+            type={showPassword ? 'text' : 'password'}
             variant="auth"
             placeholder="Enter your password"
             value={password}
