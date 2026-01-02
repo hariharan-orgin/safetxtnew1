@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { Session, User as SupabaseUser } from '@supabase/supabase-js';
-import { supabase } from '@/integrations/supabase/client';
+import { onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, User as FirebaseUser } from 'firebase/auth';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { firebaseAuth, firebaseDb } from '@/lib/firebase';
 
 export type UserRole = 'admin' | 'executive' | 'control_room' | 'field_team';
 
@@ -10,9 +11,6 @@ export interface User {
   email: string;
   username: string;
   role: UserRole;
-  location?: string;
-  phone?: string;
-  gender?: string;
 }
 
 interface AuthContextType {
@@ -55,15 +53,12 @@ const getRoleDashboard = (role: UserRole): string => {
   }
 };
 
-const buildUserFromSession = (session: Session | null, role: UserRole | null): User | null => {
-  const supaUser = session?.user as SupabaseUser | null | undefined;
-  if (!supaUser) return null;
-
-  const email = supaUser.email ?? '';
-  const username = (supaUser.user_metadata as any)?.username || email.split('@')[0] || 'User';
+const buildUserFromFirebase = (firebaseUser: FirebaseUser, role: UserRole | null): User => {
+  const email = firebaseUser.email ?? '';
+  const username = (firebaseUser.displayName || email.split('@')[0] || 'User');
 
   return {
-    id: supaUser.id,
+    id: firebaseUser.uid,
     email,
     username,
     role: role ?? 'field_team',
@@ -71,18 +66,24 @@ const buildUserFromSession = (session: Session | null, role: UserRole | null): U
 };
 
 const fetchUserRole = async (userId: string): Promise<UserRole | null> => {
-  const { data, error } = await supabase
-    .from('user_roles')
-    .select('role')
-    .eq('user_id', userId)
-    .maybeSingle();
+  const ref = doc(firebaseDb, 'userRoles', userId);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) return null;
+  const data = snap.data() as { role?: string };
+  if (!data.role) return null;
+  return data.role as UserRole;
+};
 
-  if (error) {
-    console.error('Failed to fetch user role', error);
-    return null;
+const ensureDefaultRole = async (userId: string): Promise<UserRole> => {
+  const ref = doc(firebaseDb, 'userRoles', userId);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) {
+    await setDoc(ref, { role: 'field_team' as UserRole }, { merge: true });
+    return 'field_team';
   }
-
-  return (data?.role as UserRole) ?? null;
+  const data = snap.data() as { role?: string };
+  const role = (data.role as UserRole) ?? 'field_team';
+  return role;
 };
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
@@ -91,60 +92,32 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const navigate = useNavigate();
 
   useEffect(() => {
-    const handleSessionChange = async (session: Session | null) => {
-      const supaUser = session?.user as SupabaseUser | null | undefined;
-
-      if (!supaUser) {
+    const unsubscribe = onAuthStateChanged(firebaseAuth, async (firebaseUser) => {
+      if (!firebaseUser) {
         setUser(null);
+        setIsLoading(false);
         return;
       }
 
-      const baseUser = buildUserFromSession(session, null);
-      setUser(baseUser);
+      // Optimistic user without role
+      setUser(buildUserFromFirebase(firebaseUser, null));
 
-      // Fetch role in a separate microtask to avoid deadlocks
-      setTimeout(async () => {
-        const role = await fetchUserRole(supaUser.id);
-        if (role) {
-          setUser(prev => (prev ? { ...prev, role } : prev));
-        }
-      }, 0);
-    };
-
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      handleSessionChange(session);
-    });
-
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      handleSessionChange(session);
+      // Load role separately
+      const role = await fetchUserRole(firebaseUser.uid) ?? 'field_team';
+      setUser(buildUserFromFirebase(firebaseUser, role));
       setIsLoading(false);
     });
 
-    return () => {
-      listener.subscription.unsubscribe();
-    };
+    return () => unsubscribe();
   }, []);
 
   const login = async (email: string, password: string): Promise<void> => {
     setIsLoading(true);
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (error) {
-        throw error;
-      }
-
-      const session = data.session;
-      const supaUser = session?.user as SupabaseUser | null | undefined;
-      if (!supaUser) return;
-
-      const role = await fetchUserRole(supaUser.id) ?? 'field_team';
-      const appUser = buildUserFromSession(session, role);
-      setUser(appUser);
-
+      const cred = await signInWithEmailAndPassword(firebaseAuth, email, password);
+      const firebaseUser = cred.user;
+      const role = await ensureDefaultRole(firebaseUser.uid);
+      setUser(buildUserFromFirebase(firebaseUser, role));
       navigate(getRoleDashboard(role));
     } finally {
       setIsLoading(false);
@@ -154,34 +127,19 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const signup = async (userData: SignupData): Promise<void> => {
     setIsLoading(true);
     try {
-      const redirectUrl = `${window.location.origin}/auth`;
+      const cred = await createUserWithEmailAndPassword(firebaseAuth, userData.email, userData.password);
+      const firebaseUser = cred.user;
 
-      const { data, error } = await supabase.auth.signUp({
+      // Default all new accounts to field_team role in Firestore
+      await setDoc(doc(firebaseDb, 'userRoles', firebaseUser.uid), {
+        role: 'field_team',
+        username: userData.username,
         email: userData.email,
-        password: userData.password,
-        options: {
-          emailRedirectTo: redirectUrl,
-          data: {
-            username: userData.username,
-          },
-        },
-      });
+      }, { merge: true });
 
-      if (error) {
-        throw error;
-      }
-
-      const newUser = data.user as SupabaseUser | null | undefined;
-
-      // For security, default all new accounts to field_team role
-      if (newUser) {
-        await supabase.from('user_roles').insert({
-          user_id: newUser.id,
-          role: 'field_team',
-        });
-      }
-
-      // After sign up, rely on auth listener + email confirmation
+      const role: UserRole = 'field_team';
+      setUser(buildUserFromFirebase(firebaseUser, role));
+      navigate(getRoleDashboard(role));
     } finally {
       setIsLoading(false);
     }
@@ -190,7 +148,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const logout = async () => {
     setIsLoading(true);
     try {
-      await supabase.auth.signOut();
+      await signOut(firebaseAuth);
       setUser(null);
       navigate('/auth');
     } finally {
