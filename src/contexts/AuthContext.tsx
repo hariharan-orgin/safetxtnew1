@@ -163,7 +163,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         const cred = await signInWithEmailAndPassword(firebaseAuth, email, password);
         firebaseUser = cred.user;
       } catch (error: any) {
-        if (error?.code === 'auth/user-not-found') {
+        // If demo user doesn't exist yet OR password is out of sync, (re)create it
+        if (error?.code === 'auth/user-not-found' || error?.code === 'auth/invalid-credential') {
           const cred = await createUserWithEmailAndPassword(firebaseAuth, email, password);
           firebaseUser = cred.user;
         } else {
