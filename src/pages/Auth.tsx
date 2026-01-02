@@ -53,11 +53,19 @@ const Auth: React.FC = () => {
       </div>
 
       {/* Demo logins per role */}
-      <div className="mt-6 border-t border-gray-100 pt-4">
-        <p className="text-xs uppercase tracking-wide text-[#6B7280] mb-2 text-left">Quick demo logins</p>
-        <p className="text-xs text-[#9CA3AF] mb-3 text-left">
-          Instantly explore each role-specific dashboard using demo accounts.
-        </p>
+      <div className="mt-6 border-t border-gray-100 pt-4 space-y-3">
+        <div className="space-y-1 text-left">
+          <p className="text-xs uppercase tracking-wide text-[#6B7280]">Quick demo logins</p>
+          <p className="text-xs text-[#9CA3AF]">
+            Instantly explore each role-specific dashboard using demo accounts.
+          </p>
+          <p className="text-[11px] text-[#9CA3AF]">
+            <span className="font-medium text-[#4B5563]">Admin:</span> demo-admin@safetext.app / DemoAdmin123! ·{' '}
+            <span className="font-medium text-[#4B5563]">Executive:</span> demo-executive@safetext.app / DemoExec123! ·{' '}
+            <span className="font-medium text-[#4B5563]">Control Room:</span> demo-control@safetext.app / DemoControl123! ·{' '}
+            <span className="font-medium text-[#4B5563]">Field Team:</span> demo-field@safetext.app / DemoField123!
+          </p>
+        </div>
         <div className="grid grid-cols-2 gap-2 text-left">
           <Button
             variant="outline"
