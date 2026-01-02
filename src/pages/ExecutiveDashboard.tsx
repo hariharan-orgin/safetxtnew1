@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { 
   LayoutDashboard, 
   BarChart3, 
@@ -15,6 +15,7 @@ import DashboardLayout from '@/components/dashboard/DashboardLayout';
 import KPICard from '@/components/dashboard/KPICard';
 import { motion } from 'framer-motion';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { useIncidents } from '@/hooks/useIncidents';
 
 const navItems = [
   { label: 'Overview', icon: <LayoutDashboard className="w-5 h-5" />, path: '/executive' },
@@ -25,25 +26,133 @@ const navItems = [
   { label: 'Settings', icon: <Settings className="w-5 h-5" />, path: '/executive/settings' },
 ];
 
-const trendData = [
-  { name: 'Mon', incidents: 24 },
-  { name: 'Tue', incidents: 31 },
-  { name: 'Wed', incidents: 28 },
-  { name: 'Thu', incidents: 42 },
-  { name: 'Fri', incidents: 35 },
-  { name: 'Sat', incidents: 18 },
-  { name: 'Sun', incidents: 12 },
-];
-
-const categoryData = [
-  { name: 'Harassment', value: 35, color: '#E02424' },
-  { name: 'Medical', value: 25, color: '#F97316' },
-  { name: 'Theft', value: 20, color: '#FBBF24' },
-  { name: 'Infrastructure', value: 12, color: '#2563EB' },
-  { name: 'Suspicious', value: 8, color: '#10B981' },
-];
+const weekdayShort = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 const ExecutiveDashboard: React.FC = () => {
+  const { data: incidents = [], isLoading } = useIncidents(7);
+
+  const {
+    totalIncidents,
+    avgResponseMinutes,
+    resolutionRate,
+    slaCompliance,
+    trendData,
+    categoryData,
+    zoneSlaData,
+  } = useMemo(() => {
+    if (!incidents.length) {
+      return {
+        totalIncidents: 0,
+        avgResponseMinutes: 0,
+        resolutionRate: 0,
+        slaCompliance: 0,
+        trendData: weekdayShort.map((d) => ({ name: d, incidents: 0 })),
+        categoryData: [],
+        zoneSlaData: [],
+      };
+    }
+
+    const total = incidents.length;
+
+    // Avg response time: first of acknowledgedAt/resolvedAt - reportedAt
+    let responseSumMs = 0;
+    let responseCount = 0;
+    let resolvedCount = 0;
+    let slaMetCount = 0;
+    const trendMap: Record<string, number> = {};
+    const categoryMap: Record<string, number> = {};
+    const zoneMap: Record<string, { within: number; dueSoon: number; overdue: number }> = {};
+    const now = new Date();
+
+    incidents.forEach((inc) => {
+      const dayName = weekdayShort[inc.reportedAt.getDay()];
+      trendMap[dayName] = (trendMap[dayName] ?? 0) + 1;
+
+      const catKey = inc.category || 'Other';
+      categoryMap[catKey] = (categoryMap[catKey] ?? 0) + 1;
+
+      const responseAt = inc.acknowledgedAt || inc.resolvedAt;
+      if (responseAt) {
+        responseSumMs += responseAt.getTime() - inc.reportedAt.getTime();
+        responseCount += 1;
+      }
+
+      if (inc.status === 'resolved') {
+        resolvedCount += 1;
+        if (inc.slaDueAt && inc.resolvedAt && inc.resolvedAt.getTime() <= inc.slaDueAt.getTime()) {
+          slaMetCount += 1;
+        }
+      }
+
+      const zoneKey = inc.zone || 'Unmapped';
+      if (!zoneMap[zoneKey]) {
+        zoneMap[zoneKey] = { within: 0, dueSoon: 0, overdue: 0 };
+      }
+
+      const hasSla = !!inc.slaDueAt;
+      if (hasSla) {
+        const dueAt = inc.slaDueAt as Date;
+        const timeToDue = dueAt.getTime() - now.getTime();
+        const isOverdue = (inc.status !== 'resolved' && now > dueAt) || (inc.resolvedAt && inc.resolvedAt > dueAt);
+        const isWithin = inc.status === 'resolved' && inc.resolvedAt && inc.resolvedAt <= dueAt;
+        const isDueSoon = !isWithin && !isOverdue && timeToDue <= 2 * 60 * 60 * 1000; // within 2h
+
+        if (isOverdue) zoneMap[zoneKey].overdue += 1;
+        else if (isDueSoon) zoneMap[zoneKey].dueSoon += 1;
+        else zoneMap[zoneKey].within += 1;
+      }
+    });
+
+    const avgMinutes = responseCount ? responseSumMs / responseCount / 60000 : 0;
+    const resolutionPct = total ? (resolvedCount / total) * 100 : 0;
+    const slaPct = resolvedCount ? (slaMetCount / resolvedCount) * 100 : 0;
+
+    const trendData = weekdayShort.map((name) => ({
+      name,
+      incidents: trendMap[name] ?? 0,
+    }));
+
+    const categoryEntries = Object.entries(categoryMap);
+    const catTotal = categoryEntries.reduce((sum, [, count]) => sum + count, 0) || 1;
+    const categoryData = categoryEntries.map(([name, count]) => ({
+      name,
+      value: Math.round((count / catTotal) * 100),
+      color:
+        name.toLowerCase().includes('harass') || name.toLowerCase().includes('assault')
+          ? '#E02424'
+          : name.toLowerCase().includes('medical')
+          ? '#F97316'
+          : name.toLowerCase().includes('theft')
+          ? '#FBBF24'
+          : name.toLowerCase().includes('infra')
+          ? '#2563EB'
+          : '#10B981',
+    }));
+
+    const zoneSlaData = Object.entries(zoneMap).map(([zone, vals]) => {
+      const totalZone = vals.within + vals.dueSoon + vals.overdue || 1;
+      const withinPct = Math.round((vals.within / totalZone) * 100);
+      const duePct = Math.round((vals.dueSoon / totalZone) * 100);
+      const overPct = Math.max(0, 100 - withinPct - duePct);
+      return {
+        zone,
+        withinSla: withinPct,
+        dueSoon: duePct,
+        overdue: overPct,
+      };
+    });
+
+    return {
+      totalIncidents: total,
+      avgResponseMinutes: avgMinutes,
+      resolutionRate: resolutionPct,
+      slaCompliance: slaPct,
+      trendData,
+      categoryData,
+      zoneSlaData,
+    };
+  }, [incidents]);
+
   return (
     <DashboardLayout
       role="executive"
@@ -61,29 +170,29 @@ const ExecutiveDashboard: React.FC = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         <KPICard
           title="Total Incidents"
-          value="2,847"
-          change={8}
+          value={totalIncidents.toLocaleString()}
+          change={0}
           trend="up"
           icon={<AlertTriangle className="w-6 h-6" />}
         />
         <KPICard
           title="Avg Response Time"
-          value="4.2 min"
-          change={-15}
+          value={`${avgResponseMinutes.toFixed(1)} min`}
+          change={0}
           trend="down"
           icon={<Clock className="w-6 h-6" />}
         />
         <KPICard
           title="Resolution Rate"
-          value="94.7%"
-          change={3}
+          value={`${resolutionRate.toFixed(1)}%`}
+          change={0}
           trend="up"
           icon={<CheckCircle className="w-6 h-6" />}
         />
         <KPICard
           title="SLA Compliance"
-          value="97.2%"
-          change={2}
+          value={`${slaCompliance.toFixed(1)}%`}
+          change={0}
           trend="up"
           icon={<TrendingUp className="w-6 h-6" />}
         />
@@ -166,6 +275,9 @@ const ExecutiveDashboard: React.FC = () => {
                 <span className="text-[#0F172A] font-medium">{cat.value}%</span>
               </div>
             ))}
+            {!categoryData.length && (
+              <p className="text-sm text-[#6B7280]">No incident data available for this period.</p>
+            )}
           </div>
         </motion.div>
       </div>
@@ -181,33 +293,32 @@ const ExecutiveDashboard: React.FC = () => {
         >
           <h2 className="heading-2 text-[#0F172A] mb-6">SLA Performance by Zone</h2>
           <div className="space-y-4">
-            {[
-              { zone: 'Zone A', withinSla: 92, dueSoon: 5, overdue: 3 },
-              { zone: 'Zone B', withinSla: 88, dueSoon: 8, overdue: 4 },
-              { zone: 'Zone C', withinSla: 95, dueSoon: 3, overdue: 2 },
-              { zone: 'Zone D', withinSla: 78, dueSoon: 12, overdue: 10 },
-            ].map((zone, i) => (
-              <div key={i} className="space-y-2">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-[#0F172A] font-medium">{zone.zone}</span>
-                  <span className="text-[#6B7280]">{zone.withinSla}% within SLA</span>
+            {zoneSlaData.length ? (
+              zoneSlaData.map((zone, i) => (
+                <div key={i} className="space-y-2">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-[#0F172A] font-medium">{zone.zone}</span>
+                    <span className="text-[#6B7280]">{zone.withinSla}% within SLA</span>
+                  </div>
+                  <div className="h-3 bg-gray-100 rounded-full overflow-hidden flex">
+                    <div 
+                      className="bg-severity-low h-full" 
+                      style={{ width: `${zone.withinSla}%` }} 
+                    />
+                    <div 
+                      className="bg-severity-medium h-full" 
+                      style={{ width: `${zone.dueSoon}%` }} 
+                    />
+                    <div 
+                      className="bg-severity-critical h-full" 
+                      style={{ width: `${zone.overdue}%` }} 
+                    />
+                  </div>
                 </div>
-                <div className="h-3 bg-gray-100 rounded-full overflow-hidden flex">
-                  <div 
-                    className="bg-severity-low h-full" 
-                    style={{ width: `${zone.withinSla}%` }} 
-                  />
-                  <div 
-                    className="bg-severity-medium h-full" 
-                    style={{ width: `${zone.dueSoon}%` }} 
-                  />
-                  <div 
-                    className="bg-severity-critical h-full" 
-                    style={{ width: `${zone.overdue}%` }} 
-                  />
-                </div>
-              </div>
-            ))}
+              ))
+            ) : (
+              <p className="text-sm text-[#6B7280]">No SLA data available for this period.</p>
+            )}
           </div>
           <div className="flex items-center gap-6 mt-6 pt-4 border-t border-gray-100">
             <div className="flex items-center gap-2 text-sm">
@@ -240,11 +351,11 @@ const ExecutiveDashboard: React.FC = () => {
             </div>
             <div className="p-4 bg-severity-high/5 rounded-lg border-l-4 border-severity-high">
               <p className="text-sm text-[#0F172A] font-medium">Rising Trend</p>
-              <p className="text-sm text-[#6B7280] mt-1">Harassment incidents up 12% this week</p>
+              <p className="text-sm text-[#6B7280] mt-1">Harassment incidents up this week</p>
             </div>
             <div className="p-4 bg-severity-critical/5 rounded-lg border-l-4 border-severity-critical">
               <p className="text-sm text-[#0F172A] font-medium">Risk Zone</p>
-              <p className="text-sm text-[#6B7280] mt-1">Zone D requires attention - SLA at 78%</p>
+              <p className="text-sm text-[#6B7280] mt-1">Zones with lower SLA need attention</p>
             </div>
           </div>
         </motion.div>
