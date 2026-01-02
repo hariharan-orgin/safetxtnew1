@@ -14,6 +14,7 @@ import {
   Timer,
   Image as ImageIcon
 } from 'lucide-react';
+import { useLocation } from 'react-router-dom';
 import DashboardLayout from '@/components/dashboard/DashboardLayout';
 import SeverityBadge from '@/components/dashboard/SeverityBadge';
 import { Button } from '@/components/ui/button';
@@ -46,6 +47,8 @@ const FieldTeamDashboard: React.FC = () => {
   const [selectedCase, setSelectedCase] = useState(assignedCases[0]);
   const [fieldNotes, setFieldNotes] = useState('');
   const [isOnline, setIsOnline] = useState(true);
+  const location = useLocation();
+  const path = location.pathname;
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -60,12 +63,23 @@ const FieldTeamDashboard: React.FC = () => {
     }
   };
 
+  let pageTitle = 'Assigned Cases';
+  if (path.startsWith('/field-team/map')) {
+    pageTitle = 'Map View';
+  } else if (path.startsWith('/field-team/sla')) {
+    pageTitle = 'SLA Alerts';
+  } else if (path.startsWith('/field-team/activity')) {
+    pageTitle = 'Activity Log';
+  } else if (path.startsWith('/field-team/settings')) {
+    pageTitle = 'Field Settings';
+  }
+
   return (
     <DashboardLayout
       role="field_team"
       roleLabel="Field Team"
       navItems={navItems}
-      pageTitle="Assigned Cases"
+      pageTitle={pageTitle}
     >
       {/* Availability Toggle */}
       <div className="mb-6 flex items-center justify-between">
