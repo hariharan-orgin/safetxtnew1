@@ -1,10 +1,8 @@
 import React, { useState } from 'react';
-import { useAuth, UserRole } from '@/contexts/AuthContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Switch } from '@/components/ui/switch';
 import { Eye, EyeOff, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -15,23 +13,18 @@ const SignupForm: React.FC = () => {
     email: '',
     password: '',
     confirmPassword: '',
-    role: '' as UserRole | '',
-    location: '',
-    phone: '',
-    gender: '',
-    enableOtp: false,
   });
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  const handleChange = (field: string, value: string | boolean) => {
+  const handleChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!formData.username || !formData.email || !formData.password || !formData.role) {
+
+    if (!formData.username || !formData.email || !formData.password) {
       toast.error('Please fill in all required fields');
       return;
     }
@@ -51,15 +44,11 @@ const SignupForm: React.FC = () => {
         username: formData.username,
         email: formData.email,
         password: formData.password,
-        role: formData.role as UserRole,
-        location: formData.location,
-        phone: formData.phone,
-        gender: formData.gender,
-        enableOtp: formData.enableOtp,
       });
-      toast.success('Account created successfully!');
-    } catch (error) {
-      toast.error('Signup failed. Please try again.');
+      toast.success('Account created successfully! Please check your email.');
+    } catch (error: any) {
+      const message = error?.message || 'Signup failed. Please try again.';
+      toast.error(message);
     }
   };
 
@@ -105,7 +94,7 @@ const SignupForm: React.FC = () => {
           <div className="relative">
             <Input
               id="signup-password"
-              type={showPassword ? "text" : "password"}
+              type={showPassword ? 'text' : 'password'}
               variant="auth"
               placeholder="Password"
               value={formData.password}
@@ -129,7 +118,7 @@ const SignupForm: React.FC = () => {
           <div className="relative">
             <Input
               id="confirm-password"
-              type={showConfirmPassword ? "text" : "password"}
+              type={showConfirmPassword ? 'text' : 'password'}
               variant="auth"
               placeholder="Confirm"
               value={formData.confirmPassword}
@@ -145,81 +134,6 @@ const SignupForm: React.FC = () => {
             </button>
           </div>
         </div>
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="signup-role" className="text-[#0F172A] font-medium text-sm">
-          Role *
-        </Label>
-        <Select value={formData.role} onValueChange={(value) => handleChange('role', value)}>
-          <SelectTrigger className="h-11 border-gray-200 bg-white text-gray-900 focus:border-accent focus:ring-2 focus:ring-accent/20">
-            <SelectValue placeholder="Select your role" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="admin">Admin</SelectItem>
-            <SelectItem value="executive">Executive</SelectItem>
-            <SelectItem value="control_room">Control Room</SelectItem>
-            <SelectItem value="field_team">Field Team</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-2">
-          <Label htmlFor="location" className="text-[#0F172A] font-medium text-sm">
-            Location
-          </Label>
-          <Input
-            id="location"
-            type="text"
-            variant="auth"
-            placeholder="City, Country"
-            value={formData.location}
-            onChange={(e) => handleChange('location', e.target.value)}
-          />
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="phone" className="text-[#0F172A] font-medium text-sm">
-            Phone
-          </Label>
-          <Input
-            id="phone"
-            type="tel"
-            variant="auth"
-            placeholder="+1 234 567 890"
-            value={formData.phone}
-            onChange={(e) => handleChange('phone', e.target.value)}
-          />
-        </div>
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="gender" className="text-[#0F172A] font-medium text-sm">
-          Gender
-        </Label>
-        <Select value={formData.gender} onValueChange={(value) => handleChange('gender', value)}>
-          <SelectTrigger className="h-11 border-gray-200 bg-white text-gray-900 focus:border-accent focus:ring-2 focus:ring-accent/20">
-            <SelectValue placeholder="Select gender" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="male">Male</SelectItem>
-            <SelectItem value="female">Female</SelectItem>
-            <SelectItem value="other">Other</SelectItem>
-            <SelectItem value="prefer_not_to_say">Prefer not to say</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div className="flex items-center justify-between py-2 px-3 bg-gray-50 rounded-lg">
-        <Label htmlFor="otp-toggle" className="text-[#0F172A] font-medium text-sm cursor-pointer">
-          Enable OTP Verification
-        </Label>
-        <Switch
-          id="otp-toggle"
-          checked={formData.enableOtp}
-          onCheckedChange={(checked) => handleChange('enableOtp', checked)}
-        />
       </div>
 
       <Button
