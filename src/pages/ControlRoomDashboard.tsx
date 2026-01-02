@@ -13,6 +13,7 @@ import {
   Paperclip,
   ChevronRight
 } from 'lucide-react';
+import { useLocation } from 'react-router-dom';
 import DashboardLayout from '@/components/dashboard/DashboardLayout';
 import SeverityBadge from '@/components/dashboard/SeverityBadge';
 import { Button } from '@/components/ui/button';
@@ -47,13 +48,29 @@ const messages = [
 const ControlRoomDashboard: React.FC = () => {
   const [selectedIncident, setSelectedIncident] = useState(incidents[0]);
   const [messageInput, setMessageInput] = useState('');
+  const location = useLocation();
+  const path = location.pathname;
+
+  let pageTitle = 'Live Incident Queue';
+
+  if (path.startsWith('/control-room/map')) {
+    pageTitle = 'Map View';
+  } else if (path.startsWith('/control-room/escalations')) {
+    pageTitle = 'Escalations';
+  } else if (path.startsWith('/control-room/sla')) {
+    pageTitle = 'SLA Alerts';
+  } else if (path.startsWith('/control-room/activity')) {
+    pageTitle = 'Activity Log';
+  } else if (path.startsWith('/control-room/settings')) {
+    pageTitle = 'Control Room Settings';
+  }
 
   return (
     <DashboardLayout
       role="control_room"
       roleLabel="Control Room"
       navItems={navItems}
-      pageTitle="Live Incident Queue"
+      pageTitle={pageTitle}
     >
       {/* Online Status */}
       <div className="mb-6 flex items-center justify-between">

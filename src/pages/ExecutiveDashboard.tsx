@@ -1,20 +1,31 @@
 import React, { useMemo } from 'react';
-import { 
-  LayoutDashboard, 
-  BarChart3, 
-  Map, 
-  Clock, 
-  FileText, 
+import {
+  LayoutDashboard,
+  BarChart3,
+  Map,
+  Clock,
+  FileText,
   Settings,
   TrendingUp,
-  Users,
   CheckCircle,
-  AlertTriangle
+  AlertTriangle,
 } from 'lucide-react';
+import { useLocation } from 'react-router-dom';
 import DashboardLayout from '@/components/dashboard/DashboardLayout';
 import KPICard from '@/components/dashboard/KPICard';
 import { motion } from 'framer-motion';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+} from 'recharts';
 import { useIncidents } from '@/hooks/useIncidents';
 
 const navItems = [
@@ -28,8 +39,23 @@ const navItems = [
 
 const weekdayShort = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
+const PlaceholderSection: React.FC<{ title: string; description: string }> = ({ title, description }) => (
+  <motion.div
+    initial={{ opacity: 0, y: 8 }}
+    animate={{ opacity: 1, y: 0 }}
+    transition={{ duration: 0.25 }}
+    className="bg-white rounded-xl shadow-card p-6"
+  >
+    <h2 className="heading-2 text-[#0F172A] mb-2">{title}</h2>
+    <p className="text-sm text-[#6B7280] mb-4 max-w-xl">{description}</p>
+    <p className="text-xs text-[#9CA3AF] uppercase tracking-wide">Executive module · SafeText</p>
+  </motion.div>
+);
+
 const ExecutiveDashboard: React.FC = () => {
-  const { data: incidents = [], isLoading } = useIncidents(7);
+  const { data: incidents = [] } = useIncidents(7);
+  const location = useLocation();
+  const path = location.pathname;
 
   const {
     totalIncidents,
@@ -47,14 +73,13 @@ const ExecutiveDashboard: React.FC = () => {
         resolutionRate: 0,
         slaCompliance: 0,
         trendData: weekdayShort.map((d) => ({ name: d, incidents: 0 })),
-        categoryData: [],
-        zoneSlaData: [],
+        categoryData: [] as { name: string; value: number; color: string }[],
+        zoneSlaData: [] as { zone: string; withinSla: number; dueSoon: number; overdue: number }[],
       };
     }
 
     const total = incidents.length;
 
-    // Avg response time: first of acknowledgedAt/resolvedAt - reportedAt
     let responseSumMs = 0;
     let responseCount = 0;
     let resolvedCount = 0;
@@ -153,13 +178,9 @@ const ExecutiveDashboard: React.FC = () => {
     };
   }, [incidents]);
 
-  return (
-    <DashboardLayout
-      role="executive"
-      roleLabel="Executive"
-      navItems={navItems}
-      pageTitle="Executive Overview"
-    >
+  let pageTitle = 'Executive Overview';
+  let content: React.ReactNode = (
+    <>
       {/* Read-Only Badge */}
       <div className="mb-6 inline-flex items-center gap-2 px-3 py-1.5 bg-accent/10 text-accent rounded-full text-sm font-medium">
         <span className="w-2 h-2 bg-accent rounded-full animate-pulse" />
@@ -213,18 +234,18 @@ const ExecutiveDashboard: React.FC = () => {
               <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
               <XAxis dataKey="name" stroke="#6B7280" fontSize={12} />
               <YAxis stroke="#6B7280" fontSize={12} />
-              <Tooltip 
-                contentStyle={{ 
-                  backgroundColor: '#fff', 
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: '#fff',
                   border: '1px solid #E5E7EB',
                   borderRadius: '8px',
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
                 }}
               />
-              <Line 
-                type="monotone" 
-                dataKey="incidents" 
-                stroke="#2563EB" 
+              <Line
+                type="monotone"
+                dataKey="incidents"
+                stroke="#2563EB"
                 strokeWidth={3}
                 dot={{ fill: '#2563EB', strokeWidth: 2, r: 4 }}
                 activeDot={{ r: 6, fill: '#2563EB' }}
@@ -256,11 +277,11 @@ const ExecutiveDashboard: React.FC = () => {
                   <Cell key={`cell-${index}`} fill={entry.color} />
                 ))}
               </Pie>
-              <Tooltip 
-                contentStyle={{ 
-                  backgroundColor: '#fff', 
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: '#fff',
                   border: '1px solid #E5E7EB',
-                  borderRadius: '8px'
+                  borderRadius: '8px',
                 }}
               />
             </PieChart>
@@ -301,18 +322,9 @@ const ExecutiveDashboard: React.FC = () => {
                     <span className="text-[#6B7280]">{zone.withinSla}% within SLA</span>
                   </div>
                   <div className="h-3 bg-gray-100 rounded-full overflow-hidden flex">
-                    <div 
-                      className="bg-severity-low h-full" 
-                      style={{ width: `${zone.withinSla}%` }} 
-                    />
-                    <div 
-                      className="bg-severity-medium h-full" 
-                      style={{ width: `${zone.dueSoon}%` }} 
-                    />
-                    <div 
-                      className="bg-severity-critical h-full" 
-                      style={{ width: `${zone.overdue}%` }} 
-                    />
+                    <div className="bg-severity-low h-full" style={{ width: `${zone.withinSla}%` }} />
+                    <div className="bg-severity-medium h-full" style={{ width: `${zone.dueSoon}%` }} />
+                    <div className="bg-severity-critical h-full" style={{ width: `${zone.overdue}%` }} />
                   </div>
                 </div>
               ))
@@ -360,6 +372,59 @@ const ExecutiveDashboard: React.FC = () => {
           </div>
         </motion.div>
       </div>
+    </>
+  );
+
+  if (path.startsWith('/executive/analytics')) {
+    pageTitle = 'Executive Analytics';
+    content = (
+      <PlaceholderSection
+        title="Executive Analytics"
+        description="Deeper trend analysis, cohort breakdowns, and executive-ready exports will appear here."
+      />
+    );
+  } else if (path.startsWith('/executive/heatmap')) {
+    pageTitle = 'Risk Heatmap';
+    content = (
+      <PlaceholderSection
+        title="Risk Heatmap"
+        description="Visualize incident density and severity across all zones in real time."
+      />
+    );
+  } else if (path.startsWith('/executive/sla')) {
+    pageTitle = 'SLA Performance';
+    content = (
+      <PlaceholderSection
+        title="SLA Performance"
+        description="Track SLA performance, breach patterns, and long-term reliability metrics."
+      />
+    );
+  } else if (path.startsWith('/executive/reports')) {
+    pageTitle = 'Reports';
+    content = (
+      <PlaceholderSection
+        title="Reports"
+        description="Generate board-ready reports summarizing incident volume, risk, and SLA performance."
+      />
+    );
+  } else if (path.startsWith('/executive/settings')) {
+    pageTitle = 'Executive Settings';
+    content = (
+      <PlaceholderSection
+        title="Executive Settings"
+        description="Configure executive-level alerts, digests, and escalation notifications."
+      />
+    );
+  }
+
+  return (
+    <DashboardLayout
+      role="executive"
+      roleLabel="Executive"
+      navItems={navItems}
+      pageTitle={pageTitle}
+    >
+      {content}
     </DashboardLayout>
   );
 };
