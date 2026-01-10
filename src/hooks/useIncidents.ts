@@ -1,6 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { collection, getDocs, query, where, Timestamp } from 'firebase/firestore';
-import { firebaseDb } from '@/lib/firebase';
+import { supabase } from '@/integrations/supabase/client';
 
 export type IncidentSeverity = 'critical' | 'high' | 'medium' | 'low';
 export type IncidentStatus = 'open' | 'in_progress' | 'resolved' | 'cancelled';
@@ -20,30 +19,28 @@ export interface Incident {
   slaDueAt?: Date | null;
 }
 
-const incidentsCollection = collection(firebaseDb, 'incidents');
-
-function mapIncident(docSnap: any): Incident {
-  const data = docSnap.data();
+function mapIncident(row: any): Incident {
   const toDate = (value: any): Date | null => {
-    if (value instanceof Timestamp) return value.toDate();
-    if (value && typeof value.toDate === 'function') return value.toDate();
+    if (!value) return null;
+    if (value instanceof Date) return value;
     if (typeof value === 'string' || typeof value === 'number') return new Date(value);
+    if (typeof value.toDate === 'function') return value.toDate();
     return null;
   };
 
   return {
-    id: docSnap.id,
-    title: data.title ?? 'Untitled Incident',
-    description: data.description ?? undefined,
-    severity: (data.severity as IncidentSeverity) ?? 'medium',
-    status: (data.status as IncidentStatus) ?? 'open',
-    category: data.category ?? undefined,
-    location: data.location ?? undefined,
-    zone: data.zone ?? undefined,
-    reportedAt: toDate(data.reportedAt) ?? new Date(),
-    acknowledgedAt: toDate(data.acknowledgedAt),
-    resolvedAt: toDate(data.resolvedAt),
-    slaDueAt: toDate(data.slaDueAt),
+    id: row.id,
+    title: row.title ?? 'Untitled Incident',
+    description: row.description ?? undefined,
+    severity: (row.severity as IncidentSeverity) ?? 'medium',
+    status: (row.status as IncidentStatus) ?? 'open',
+    category: row.category ?? undefined,
+    location: row.location ?? undefined,
+    zone: row.zone ?? undefined,
+    reportedAt: toDate(row.reported_at) ?? new Date(),
+    acknowledgedAt: toDate(row.acknowledged_at),
+    resolvedAt: toDate(row.resolved_at),
+    slaDueAt: toDate(row.sla_due_at),
   };
 }
 
@@ -51,13 +48,18 @@ async function fetchRecentIncidents(days: number = 7): Promise<Incident[]> {
   const now = new Date();
   const from = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
 
-  const q = query(
-    incidentsCollection,
-    where('reportedAt', '>=', from)
-  );
+  const { data, error } = await supabase
+    .from('incidents')
+    .select('*')
+    .gte('reported_at', from.toISOString())
+    .order('reported_at', { ascending: false });
 
-  const snap = await getDocs(q);
-  return snap.docs.map(mapIncident);
+  if (error) {
+    console.error('Error fetching incidents', error);
+    throw error;
+  }
+
+  return (data ?? []).map(mapIncident);
 }
 
 export function useIncidents(days: number = 7) {
